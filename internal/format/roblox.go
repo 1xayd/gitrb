@@ -1,7 +1,6 @@
-// Package format bridges the Git snapshot format with Roblox's native model
-// files. The rbxfile dependency is used for both the XML (.rbxmx) and binary
-// (.rbxm) encoders, so binary models are real Roblox model files rather than
-// XML with a different extension.
+// Package format bridges the Git snapshot format with Roblox's native place
+// and model files. The rbxfile dependency is used for real Roblox binary
+// places (.rbxl), binary models (.rbxm), and XML models (.rbxmx).
 package format
 
 import (
@@ -41,7 +40,16 @@ func ReadModel(path string) (ReadResult, error) {
 	if err != nil {
 		return ReadResult{}, err
 	}
-	root, err := bin.DeserializeModel(bytes.NewReader(data), nil)
+	ext := strings.ToLower(filepath.Ext(path))
+	var root *rbxfile.Root
+	switch ext {
+	case ".rbxl":
+		root, err = bin.DeserializePlace(bytes.NewReader(data), nil)
+	case ".rbxm", ".rbxmx":
+		root, err = bin.DeserializeModel(bytes.NewReader(data), nil)
+	default:
+		return ReadResult{}, fmt.Errorf("input must end in .rbxl, .rbxm, or .rbxmx")
+	}
 	if err != nil {
 		return ReadResult{}, fmt.Errorf("decode %s: %w", path, err)
 	}
@@ -101,6 +109,10 @@ func WriteModel(path string, snapshot *protocol.Snapshot) (WriteResult, error) {
 	var buf bytes.Buffer
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
+	case ".rbxl":
+		if err := bin.SerializePlace(&buf, nil, root); err != nil {
+			return WriteResult{}, fmt.Errorf("encode binary place: %w", err)
+		}
 	case ".rbxm":
 		if err := bin.SerializeModel(&buf, nil, root); err != nil {
 			return WriteResult{}, fmt.Errorf("encode binary model: %w", err)
@@ -110,7 +122,7 @@ func WriteModel(path string, snapshot *protocol.Snapshot) (WriteResult, error) {
 			return WriteResult{}, fmt.Errorf("encode XML model: %w", err)
 		}
 	default:
-		return WriteResult{}, fmt.Errorf("output must end in .rbxm or .rbxmx")
+		return WriteResult{}, fmt.Errorf("output must end in .rbxl, .rbxm, or .rbxmx")
 	}
 	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
 		return WriteResult{}, err

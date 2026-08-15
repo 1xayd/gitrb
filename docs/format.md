@@ -89,11 +89,12 @@ The plugin automatically switches to the chunk endpoints for large snapshots.
 The server checks `baseRevision` before writing. A mismatch returns HTTP 409
 with `code: "conflict"` and the current `serverRevision`.
 
-## Native model conversion
+## Native place and model conversion
 
 `internal/format` uses the Go Roblox file codec to decode and encode real
-`.rbxm` binary models and `.rbxmx` XML models. The CLI intentionally treats
-unknown or unsafe values as warnings instead of inventing property values.
-Attributes and tags are fully represented in the Git snapshot; native model
+`.rbxl` binary places and `.rbxm` binary models. `.rbxmx` XML models remain
+supported for compatibility. The CLI intentionally treats unknown or unsafe
+values as warnings instead of inventing property values.
+Attributes and tags are fully represented in the Git snapshot; native Roblox
 files may not carry all of those editor-side fields, depending on Roblox's
-model format and the source file.
+file format and the source file.

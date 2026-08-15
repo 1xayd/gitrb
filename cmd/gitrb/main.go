@@ -16,7 +16,7 @@ import (
 	"gitrb/internal/vcs"
 )
 
-const version = "1.0.0"
+const version = "1.0.1"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -164,7 +164,7 @@ func commandImport(args []string) error {
 	fs := flag.NewFlagSet("import", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	dir := fs.String("project", ".", "gitrb project directory")
-	input := fs.String("input", "", "Roblox model file (.rbxm or .rbxmx)")
+	input := fs.String("input", "", "Roblox file (.rbxl, .rbxm, or .rbxmx)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func commandImport(args []string) error {
 		*input = fs.Arg(0)
 	}
 	if *input == "" || fs.NArg() > 1 {
-		return fmt.Errorf("usage: gitrb import --project DIR --input model.rbxm")
+		return fmt.Errorf("usage: gitrb import --project DIR --input game.rbxl")
 	}
 	read, err := format.ReadModel(*input)
 	if err != nil {
@@ -191,7 +191,7 @@ func commandExport(args []string) error {
 	fs := flag.NewFlagSet("export", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	dir := fs.String("project", ".", "gitrb project directory")
-	output := fs.String("output", "", "output model file (.rbxm or .rbxmx)")
+	output := fs.String("output", "", "output Roblox file (.rbxl, .rbxm, or .rbxmx)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func commandExport(args []string) error {
 		*output = fs.Arg(0)
 	}
 	if *output == "" || fs.NArg() > 1 {
-		return fmt.Errorf("usage: gitrb export --project DIR --output model.rbxmx")
+		return fmt.Errorf("usage: gitrb export --project DIR --output game.rbxl")
 	}
 	_, snapshot, err := project.Revision(absPath(*dir))
 	if err != nil {
@@ -323,8 +323,8 @@ Usage:
 	gitrb init [--name NAME] [directory]
   gitrb serve --project DIR [--listen 127.0.0.1:1648] [--token TOKEN]
   gitrb status --project DIR [--json]
-  gitrb import --project DIR --input model.rbxm
-  gitrb export --project DIR --output model.rbxmx
+  gitrb import --project DIR --input game.rbxl
+  gitrb export --project DIR --output game.rbxl
   gitrb build --project DIR --output model.rbxm
   gitrb plugin --source plugin/GitRB.plugin.lua --output GitRB.rbxm
   gitrb commit --project DIR --message "message"

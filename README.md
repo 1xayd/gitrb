@@ -9,7 +9,8 @@ The project includes:
 - a Go command-line tool and local HTTP server;
 - a Roblox Studio plugin;
 - Git and GitHub CLI workflows;
-- import and export for `.rbxm` and `.rbxmx` model files.
+- import and export for `.rbxl` place files and `.rbxm` model files;
+  `.rbxmx` model files remain supported for compatibility.
 
 ## Requirements
 
@@ -87,18 +88,20 @@ when they are listed in `.gitrb/index.json`; unrelated files are left alone.
 
 See [docs/format.md](docs/format.md) for the snapshot and HTTP protocol.
 
-## Roblox model files
+## Roblox place and model files
 
-Import an existing model into a project:
+Import an existing place or model into a project:
 
 ```powershell
+.\gitrb.exe import --project C:\path\to\my-game --input game.rbxl
 .\gitrb.exe import --project C:\path\to\my-game --input library.rbxmx
 .\gitrb.exe import --project C:\path\to\my-game --input library.rbxm
 ```
 
-Export the project as a Roblox model:
+Export the project as a Roblox place or model:
 
 ```powershell
+.\gitrb.exe export --project C:\path\to\my-game --output game.rbxl
 .\gitrb.exe export --project C:\path\to\my-game --output library.rbxmx
 .\gitrb.exe export --project C:\path\to\my-game --output library.rbxm
 ```
@@ -129,9 +132,7 @@ The `gitrb github` command is also available:
 .\gitrb.exe github --project C:\path\to\my-game --repo OWNER/my-game --visibility private
 ```
 
-## Release 1.0
+## Release 1.0.1
 
-The first stable release is tagged `v1.0.0`. It contains the Go CLI, the
-Studio plugin, the Git project format, revision-aware syncing, and native
-`.rbxm` and `.rbxmx` model conversion.
-
+The `v1.0.1` release adds native `.rbxl` binary place conversion while
+retaining `.rbxm` and `.rbxmx` model conversion.

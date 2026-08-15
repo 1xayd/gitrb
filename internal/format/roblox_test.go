@@ -44,3 +44,37 @@ func TestModelRoundTripXMLAndBinary(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaceRoundTripBinary(t *testing.T) {
+	t.Parallel()
+	snapshot := &protocol.Snapshot{
+		SchemaVersion: protocol.SchemaVersion,
+		Project:       "PlaceFixture",
+		Roots: []*protocol.Node{{
+			ID: "RBX1", Name: "Workspace", ClassName: "Workspace", Order: 0,
+			Children: []*protocol.Node{{
+				ID: "RBX2", Name: "Part", ClassName: "Part", Order: 0,
+				Properties: map[string]any{
+					"Anchored": true,
+					"Size":     map[string]any{"__type": "Vector3", "x": 4.0, "y": 2.0, "z": 1.0},
+				},
+			}},
+		}},
+	}
+	path := filepath.Join(t.TempDir(), "fixture.rbxl")
+	if _, err := WriteModel(path, snapshot); err != nil {
+		t.Fatalf("write place: %v", err)
+	}
+	read, err := ReadModel(path)
+	if err != nil {
+		t.Fatalf("read place: %v", err)
+	}
+	if len(read.Snapshot.Roots) != 1 || len(read.Snapshot.Roots[0].Children) != 1 {
+		t.Fatalf("read place lost tree: %#v", read.Snapshot.Roots)
+	}
+	root := read.Snapshot.Roots[0]
+	part := root.Children[0]
+	if root.Name != "Workspace" || root.ClassName != "Workspace" || part.Name != "Part" || part.ClassName != "Part" {
+		t.Fatalf("read place returned wrong tree: %#v", root)
+	}
+}
