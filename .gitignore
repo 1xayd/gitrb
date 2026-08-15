@@ -1,0 +1,9 @@
+# Local build output
+gitrb.exe
+
+# Atomic-write leftovers if a process is interrupted
+*.tmp-*
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db

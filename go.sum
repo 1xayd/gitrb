@@ -1,0 +1,6 @@
+github.com/bkaradzic/go-lz4 v1.0.0 h1:RXc4wYsyz985CkXXeX04y4VnZFGG8Rd43pRaHsOXAKk=
+github.com/bkaradzic/go-lz4 v1.0.0/go.mod h1:0YdlkowM3VswSROI7qDxhRvJ3sLhlFrRRwjwegp5jy4=
+github.com/robloxapi/rbxapi v0.1.0 h1:xcve5EgsdXRBfRu6e5y03lHbcELkAjTuRCDw8OX060I=
+github.com/robloxapi/rbxapi v0.1.0/go.mod h1:YOxBbPE55ssodC1fGi8urHCDwntYrJg9FVjyY3sRX5o=
+github.com/robloxapi/rbxfile v0.1.0 h1:W+AMxD4fG1iwUuznFOTjDCILvH3G4PfMlu3LzElvGhw=
+github.com/robloxapi/rbxfile v0.1.0/go.mod h1:ZgmYEO9nTu9BZF54oAOsfKuPZSFKviMamAPH45GMJOI=
