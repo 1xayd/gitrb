@@ -64,6 +64,16 @@ The plugin stores the last project and revision in Studio plugin settings.
 Pushes include the base revision. If the project changed since that revision,
 the bridge returns a conflict and does not overwrite the newer files.
 
+The plugin can fetch the published game or place name automatically. If no
+project name has been saved, it uses that name and falls back to the Studio
+place name. The server's `gitrb.json` project name remains authoritative.
+
+Enable automatic sync in the plugin to watch Studio structure, scripts,
+properties, attributes, and tags. Studio changes are pushed after a short
+debounce. Git-folder changes are checked through the bridge and pulled with
+managed-tree pruning when Studio has no local changes. Automatic sync stops on
+a revision conflict so it cannot silently overwrite either side.
+
 ## Git-friendly project format
 
 Each instance is represented by a `.gitrb-node.json` file. Script source is
@@ -132,7 +142,9 @@ The `gitrb github` command is also available:
 .\gitrb.exe github --project C:\path\to\my-game --repo OWNER/my-game --visibility private
 ```
 
-## Release 1.0.1
+## Release 1.1.0
 
-The `v1.0.1` release adds native `.rbxl` binary place conversion while
-retaining `.rbxm` and `.rbxmx` model conversion.
+The `v1.1.0` release adds conflict-safe automatic Studio/Git synchronization,
+automatic game-name lookup, expanded UI property serialization, and reliable
+Roblox HTTP GET requests. It retains native `.rbxl` place, `.rbxm` model, and
+`.rbxmx` compatibility conversion.

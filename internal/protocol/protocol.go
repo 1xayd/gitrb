@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -34,6 +35,49 @@ type Node struct {
 	Tags       []string       `json:"tags,omitempty"`
 	Script     *Script        `json:"script,omitempty"`
 	Children   []*Node        `json:"children,omitempty"`
+}
+
+// UnmarshalJSON accepts Roblox HttpService's representation of empty Lua
+// tables. HttpService:JSONEncode({}) can produce [], while these fields are
+// object-shaped maps in the bridge protocol.
+func (n *Node) UnmarshalJSON(data []byte) error {
+	type nodeAlias Node
+	aux := &struct {
+		Properties json.RawMessage `json:"properties"`
+		Attributes json.RawMessage `json:"attributes"`
+		*nodeAlias
+	}{nodeAlias: (*nodeAlias)(n)}
+	n.Properties = nil
+	n.Attributes = nil
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	properties, err := decodeJSONObjectOrEmptyArray(aux.Properties)
+	if err != nil {
+		return fmt.Errorf("properties: %w", err)
+	}
+	attributes, err := decodeJSONObjectOrEmptyArray(aux.Attributes)
+	if err != nil {
+		return fmt.Errorf("attributes: %w", err)
+	}
+	n.Properties = properties
+	n.Attributes = attributes
+	return nil
+}
+
+func decodeJSONObjectOrEmptyArray(data []byte) (map[string]any, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	if bytes.Equal(trimmed, []byte("[]")) {
+		return map[string]any{}, nil
+	}
+	var result map[string]any
+	if err := json.Unmarshal(trimmed, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 type Script struct {

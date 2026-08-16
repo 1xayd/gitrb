@@ -4,6 +4,7 @@
 -- Script inside GitRB.rbxm. It talks only to the local gitrb process.
 
 local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local Selection = game:GetService("Selection")
 local CollectionService = game:GetService("CollectionService")
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
@@ -13,6 +14,8 @@ local SCHEMA = 1
 local DEFAULT_ENDPOINT = "http://127.0.0.1:1648"
 local DIRECT_LIMIT = 380000
 local CHUNK_SIZE = 180000
+local AUTO_SYNC_INTERVAL = 2
+local AUTO_PUSH_DELAY = 1.5
 
 local ROOT_NAMES = {
 	"Workspace",
@@ -43,6 +46,7 @@ local COMMON_PROPERTIES = {
 	"CFrame",
 	"PivotOffset",
 	"Size",
+	"Rotation",
 	"Color",
 	"BrickColor",
 	"Material",
@@ -81,30 +85,99 @@ local COMMON_PROPERTIES = {
 	"ToolTip",
 	"Text",
 	"TextColor3",
+	"TextTransparency",
+	"TextStrokeColor3",
+	"TextStrokeTransparency",
 	"TextSize",
 	"Font",
 	"FontFace",
+	"TextXAlignment",
+	"TextYAlignment",
+	"TextDirection",
+	"TextTruncate",
 	"TextScaled",
 	"TextWrapped",
 	"RichText",
 	"LineHeight",
+	"MaxVisibleGraphemes",
+	"PlaceholderText",
+	"PlaceholderColor3",
+	"ClearTextOnFocus",
+	"MultiLine",
+	"TextEditable",
 	"BackgroundColor3",
 	"BackgroundTransparency",
 	"BorderColor3",
 	"BorderSizePixel",
 	"Size",
 	"AnchorPoint",
+	"CornerRadius",
+	"Padding",
+	"PaddingTop",
+	"PaddingBottom",
+	"PaddingLeft",
+	"PaddingRight",
+	"FillDirection",
+	"HorizontalAlignment",
+	"VerticalAlignment",
+	"SortOrder",
+	"Wraps",
+	"CellPadding",
+	"CellSize",
+	"FillDirectionMaxCells",
+	"StartCorner",
+	"Animated",
+	"Circular",
+	"EasingDirection",
+	"EasingStyle",
+	"GamepadInputEnabled",
+	"TweenTime",
+	"TouchInputEnabled",
+	"ScrollWheelInputEnabled",
+	"CurrentPage",
+	"AspectRatio",
+	"AspectType",
+	"DominantAxis",
+	"MinSize",
+	"MaxSize",
+	"MinTextSize",
+	"MaxTextSize",
+	"Scale",
 	"LayoutOrder",
 	"ZIndex",
+	"DisplayOrder",
+	"IgnoreGuiInset",
+	"ZIndexBehavior",
+	"ClipToDeviceSafeArea",
+	"Selectable",
+	"Interactable",
+	"Modal",
+	"Draggable",
+	"SelectionImageObject",
 	"Image",
 	"ImageColor3",
 	"ImageTransparency",
+	"ImageRectOffset",
+	"ImageRectSize",
+	"ResampleMode",
+	"SliceCenter",
+	"SliceScale",
 	"ScaleType",
 	"TileSize",
 	"CanvasSize",
 	"CanvasPosition",
 	"ScrollBarThickness",
 	"AutomaticCanvasSize",
+	"ScrollingDirection",
+	"ScrollingEnabled",
+	"ElasticBehavior",
+	"ScrollBarImageColor3",
+	"ScrollBarImageTransparency",
+	"VerticalScrollBarInset",
+	"HorizontalScrollBarInset",
+	"BottomImage",
+	"MidImage",
+	"TopImage",
 	"ClipsDescendants",
 	"ResetOnSpawn",
 	"AlwaysOnTop",
@@ -143,6 +216,41 @@ local COMMON_PROPERTIES = {
 	"LowerAngle",
 	"TargetAngle",
 	"TargetPosition",
+	"Thickness",
+	"ApplyStrokeMode",
+	"LineJoinMode",
+	"Offset",
+	"WorldPosition",
+	"WorldOrientation",
+	"WorldCFrame",
+	"Axis",
+	"SecondaryAxis",
+	"WorldAxis",
+	"WorldSecondaryAxis",
+	"AssemblyLinearVelocity",
+	"AssemblyAngularVelocity",
+	"CustomPhysicalProperties",
+	"LevelOfDetail",
+	"ScaleTo",
+	"Lifetime",
+	"Rate",
+	"Speed",
+	"RotSpeed",
+	"SpreadAngle",
+	"LightEmission",
+	"LightInfluence",
+	"LockedToPart",
+	"EmissionDirection",
+	"ShapeInOut",
+	"ShapeStyle",
+	"ShapePartial",
+	"Drag",
+	"Squash",
+	"FlipbookFramerate",
+	"FlipbookLayout",
+	"FlipbookMode",
+	"FlipbookStartRandom",
+	"Enabled",
 }
 
 local function getSetting(name, fallback)
@@ -161,9 +269,40 @@ local statusLabel
 local endpointBox
 local projectBox
 local tokenBox
+local autoSyncButton
+local syncBusy = false
+local autoSyncDirty = false
+local autoSyncDue = 0
+local autoSyncConflict = false
+local lastAutoSyncError = ""
+local trackedInstances = {}
+local trackedTags = {}
+local autoSyncSetting = getSetting("gitrb.autoSync", false)
+local autoSyncEnabled = autoSyncSetting == true or autoSyncSetting == "true"
 
 local function setSetting(name, value)
 	plugin:SetSetting(name, value)
+end
+
+local function fetchGameName()
+	local fallback = game.Name
+	if game.GameId and game.GameId > 0 then
+		local ok, info = pcall(function()
+			return MarketplaceService:GetProductInfo(game.GameId, Enum.InfoType.Game)
+		end)
+		if ok and info and info.Name and info.Name ~= "" then
+			return info.Name
+		end
+	end
+	if game.PlaceId and game.PlaceId > 0 then
+		local ok, info = pcall(function()
+			return MarketplaceService:GetProductInfo(game.PlaceId, Enum.InfoType.Asset)
+		end)
+		if ok and info and info.Name and info.Name ~= "" then
+			return info.Name
+		end
+	end
+	return fallback
 end
 
 local function setStatus(message, isError)
@@ -182,13 +321,16 @@ local function request(method, path, body)
 	if token ~= "" then
 		headers["X-GitRB-Token"] = token
 	end
+	local options = {
+		Url = trimSlash(endpoint) .. path,
+		Method = method,
+		Headers = headers,
+	}
+	if body ~= nil then
+		options.Body = HttpService:JSONEncode(body)
+	end
 	local ok, response = pcall(function()
-		return HttpService:RequestAsync({
-			Url = trimSlash(endpoint) .. path,
-			Method = method,
-			Headers = headers,
-			Body = body and HttpService:JSONEncode(body) or "",
-		})
+		return HttpService:RequestAsync(options)
 	end)
 	if not ok then
 		error("bridge request failed: " .. tostring(response))
@@ -273,7 +415,9 @@ local function serializeValue(value, paths)
 	elseif kind == "ColorSequence" then
 		local keypoints = {}
 		for _, keypoint in ipairs(value.Keypoints) do
-			table.insert(keypoints, { time = keypoint.Time, value = serializeValue(keypoint.Value, paths), envelope = keypoint.Envelope })
+			-- ColorSequenceKeypoint has no Envelope property; keep the shared
+			-- snapshot shape explicit with the only valid value, zero.
+			table.insert(keypoints, { time = keypoint.Time, value = serializeValue(keypoint.Value, paths), envelope = 0 })
 		end
 		return { __type = "ColorSequence", keypoints = keypoints }
 	elseif kind == "Rect" then
@@ -287,7 +431,7 @@ local function serializeValue(value, paths)
 	elseif kind == "PhysicalProperties" then
 		return { __type = "PhysicalProperties", customPhysics = true, density = value.Density, friction = value.Friction, elasticity = value.Elasticity, frictionWeight = value.FrictionWeight, elasticityWeight = value.ElasticityWeight }
 	elseif kind == "EnumItem" then
-		return { __type = "EnumItem", enum = value.EnumType.Name, name = value.Name, value = value.Value }
+		return { __type = "EnumItem", enum = tostring(value.EnumType), name = value.Name, value = value.Value }
 	end
 	return nil
 end
@@ -302,7 +446,13 @@ local function safeRead(instance, property, paths)
 	if not ok then
 		return nil
 	end
-	return serializeValue(value, paths)
+	local serializeOK, encoded = pcall(function()
+		return serializeValue(value, paths)
+	end)
+	if not serializeOK then
+		return nil
+	end
+	return encoded
 end
 
 local function collectStructure(instance, order, parentPath, paths)
@@ -334,17 +484,26 @@ local function fillNode(node, instance, paths)
 			end
 		end
 	end
-	node.properties = properties
+	if next(properties) ~= nil then
+		node.properties = properties
+	end
 	local attributes = {}
 	local attributeOk, rawAttributes = pcall(function()
 		return instance:GetAttributes()
 	end)
 	if attributeOk then
 		for name, value in pairs(rawAttributes) do
-			attributes[name] = serializeValue(value, paths)
+			local serializeOK, encoded = pcall(function()
+				return serializeValue(value, paths)
+			end)
+			if serializeOK and encoded ~= nil then
+				attributes[name] = encoded
+			end
 		end
 	end
-	node.attributes = attributes
+	if next(attributes) ~= nil then
+		node.attributes = attributes
+	end
 	local tagsOk, tags = pcall(function()
 		return CollectionService:GetTags(instance)
 	end)
@@ -402,6 +561,79 @@ local function gameRoots()
 		end
 	end
 	return roots
+end
+
+local function markLocalChanged()
+	if syncBusy then
+		return
+	end
+	autoSyncDirty = true
+	autoSyncDue = os.clock() + AUTO_PUSH_DELAY
+end
+
+local function trackInstance(instance)
+	if trackedInstances[instance] then
+		return
+	end
+	trackedInstances[instance] = true
+	instance.Changed:Connect(function()
+		markLocalChanged()
+	end)
+	local attributeSignalOK, attributeSignal = pcall(function()
+		return instance.AttributeChanged
+	end)
+	if attributeSignalOK and attributeSignal then
+		attributeSignal:Connect(function()
+			markLocalChanged()
+		end)
+	end
+end
+
+local function trackTags(markDirty)
+	local ok, tags = pcall(function()
+		return CollectionService:GetAllTags()
+	end)
+	if not ok then
+		return
+	end
+	for _, tag in ipairs(tags) do
+		if not trackedTags[tag] then
+			trackedTags[tag] = true
+			local addedOK, addedSignal = pcall(function()
+				return CollectionService:GetInstanceAddedSignal(tag)
+			end)
+			if addedOK and addedSignal then
+				addedSignal:Connect(markLocalChanged)
+			end
+			local removedOK, removedSignal = pcall(function()
+				return CollectionService:GetInstanceRemovedSignal(tag)
+			end)
+			if removedOK and removedSignal then
+				removedSignal:Connect(markLocalChanged)
+			end
+			-- On later polls, discovering a new tag means the managed tree changed.
+			if markDirty then
+				markLocalChanged()
+			end
+		end
+	end
+end
+
+local function startChangeTracking()
+	for _, root in ipairs(gameRoots()) do
+		trackInstance(root)
+		for _, descendant in ipairs(root:GetDescendants()) do
+			trackInstance(descendant)
+		end
+	end
+	game.DescendantAdded:Connect(function(instance)
+		trackInstance(instance)
+		markLocalChanged()
+	end)
+	game.DescendantRemoving:Connect(function()
+		markLocalChanged()
+	end)
+	trackTags(false)
 end
 
 local function makeSnapshot(roots)
@@ -571,7 +803,7 @@ local function decodeValue(value, desiredPaths)
 	elseif kind == "ColorSequence" then
 		local keypoints = {}
 		for _, keypoint in ipairs(value.keypoints or {}) do
-			table.insert(keypoints, ColorSequenceKeypoint.new(keypoint.time, decodeValue(keypoint.value, desiredPaths), keypoint.envelope or 0))
+			table.insert(keypoints, ColorSequenceKeypoint.new(keypoint.time, decodeValue(keypoint.value, desiredPaths)))
 		end
 		return ColorSequence.new(keypoints)
 	elseif kind == "Rect" then
@@ -711,9 +943,15 @@ local function applySnapshot(snapshot, prune)
 end
 
 local function runAction(label, callback)
+	if syncBusy then
+		setStatus("another sync is already running", true)
+		return
+	end
 	setStatus(label .. "...", false)
 	task.spawn(function()
+		syncBusy = true
 		local ok, result = pcall(callback)
+		syncBusy = false
 		if ok then
 			setStatus(result or (label .. " complete"), false)
 		else
@@ -726,14 +964,22 @@ local function connectBridge()
 	local response = request("GET", "/v1/health")
 	projectName = response.project or projectName
 	baseRevision = response.revision or baseRevision
+	autoSyncDirty = false
+	autoSyncConflict = false
+	lastAutoSyncError = ""
 	setSetting("gitrb.project", projectName)
 	setSetting("gitrb.baseRevision", baseRevision)
+	if projectBox then
+		projectBox.Text = projectName
+	end
 	return "connected to " .. tostring(projectName) .. " at " .. tostring(baseRevision):sub(1, 12)
 end
 
 local function pushGame()
 	local snapshot = makeSnapshot(gameRoots())
 	local result = pushSnapshot(snapshot)
+	autoSyncDirty = false
+	autoSyncConflict = false
 	return "pushed game: " .. tostring(#(result.changedFiles or {})) .. " files changed"
 end
 
@@ -744,6 +990,8 @@ local function pushSelection()
 	end
 	local snapshot = makeSnapshot(roots)
 	local result = pushSnapshot(snapshot)
+	autoSyncDirty = false
+	autoSyncConflict = false
 	return "pushed selection: " .. tostring(#(result.changedFiles or {})) .. " files changed"
 end
 
@@ -752,16 +1000,118 @@ local function pull(prune)
 	applySnapshot(snapshot, prune)
 	baseRevision = revision or baseRevision
 	projectName = snapshot.project or projectName
+	autoSyncDirty = false
+	autoSyncConflict = false
+	lastAutoSyncError = ""
 	setSetting("gitrb.baseRevision", baseRevision)
 	setSetting("gitrb.project", projectName)
 	return prune and "pulled and pruned at " .. baseRevision:sub(1, 12) or "pulled at " .. baseRevision:sub(1, 12)
+end
+
+local function autoSyncCycle()
+	if not autoSyncEnabled or syncBusy or autoSyncConflict then
+		return
+	end
+	trackTags(true)
+	local healthOK, health = pcall(function()
+		return request("GET", "/v1/health")
+	end)
+	if not healthOK then
+		local message = tostring(health)
+		if message ~= lastAutoSyncError then
+			lastAutoSyncError = message
+			setStatus("auto-sync: " .. message, true)
+		end
+		return
+	end
+	lastAutoSyncError = ""
+	if health.project and health.project ~= "" and health.project ~= projectName then
+		projectName = health.project
+		setSetting("gitrb.project", projectName)
+		if projectBox then
+			projectBox.Text = projectName
+		end
+	end
+	if baseRevision == "" then
+		baseRevision = health.revision or ""
+		setSetting("gitrb.baseRevision", baseRevision)
+		return
+	end
+	if health.revision == baseRevision then
+		if autoSyncDirty and os.clock() >= autoSyncDue then
+			syncBusy = true
+			local pushOK, result = pcall(pushGame)
+			syncBusy = false
+			if pushOK then
+				autoSyncDirty = false
+				setStatus("auto-sync: " .. tostring(result), false)
+			else
+				local message = tostring(result)
+				if string.find(message, "stale base", 1, true) or string.find(message, "base revision", 1, true) or string.find(message, "project mismatch", 1, true) then
+					autoSyncConflict = true
+					setStatus("auto-sync stopped: " .. message, true)
+				else
+					setStatus("auto-sync: " .. message, true)
+				end
+			end
+		end
+		return
+	end
+	if autoSyncDirty then
+		autoSyncConflict = true
+		setStatus("auto-sync conflict: Git changed while Studio had local changes", true)
+		return
+	end
+	syncBusy = true
+	local pullOK, result = pcall(function()
+		return pull(true)
+	end)
+	syncBusy = false
+	if pullOK then
+		setStatus("auto-sync: " .. tostring(result), false)
+	else
+		local message = tostring(result)
+		if string.find(message, "stale base", 1, true) or string.find(message, "base revision", 1, true) then
+			autoSyncConflict = true
+		end
+		setStatus("auto-sync: " .. message, true)
+	end
+end
+
+local function updateAutoSyncButton()
+	if autoSyncButton then
+		autoSyncButton.Text = autoSyncEnabled and "Disable automatic sync" or "Enable automatic sync"
+	end
+end
+
+local function toggleAutoSync()
+	if autoSyncEnabled then
+		autoSyncEnabled = false
+		autoSyncConflict = false
+	setSetting("gitrb.autoSync", false)
+	updateAutoSyncButton()
+	return "automatic sync disabled"
+	end
+	autoSyncEnabled = true
+	setSetting("gitrb.autoSync", true)
+	local ok, result = pcall(connectBridge)
+	if not ok then
+		autoSyncEnabled = false
+		setSetting("gitrb.autoSync", false)
+		updateAutoSyncButton()
+		error(result)
+	end
+	autoSyncDirty = false
+	autoSyncConflict = false
+	updateAutoSyncButton()
+	return "automatic sync enabled"
 end
 
 local toolbar = plugin:CreateToolbar("gitrb")
 local openButton = toolbar:CreateButton("gitrb", "Open gitrb bridge", "")
 openButton.ClickableWhenViewportHidden = true
 
-local widgetInfo = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, false, 380, 470, 300, 300)
+local widgetInfo = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, false, 380, 560, 300, 400)
 local widget = plugin:CreateDockWidgetPluginGui("GitRBDock", widgetInfo)
 widget.Title = "gitrb"
 
@@ -839,7 +1189,7 @@ addLabel("Local bridge on port 1648. Start `gitrb serve` before syncing.", 34)
 addLabel("Endpoint")
 endpointBox = addBox(endpoint, "http://127.0.0.1:1648")
 addLabel("Project name (must match gitrb.json)")
-projectBox = addBox(projectName, game.Name)
+projectBox = addBox(projectName ~= "" and projectName or game.Name, game.Name)
 addLabel("Token (optional)")
 tokenBox = addBox(token, "local token")
 tokenBox.TextTransparency = 0.1
@@ -853,6 +1203,33 @@ addButton("Pull from Git folder", function()
 end)
 addButton("Pull and prune managed trees", function()
 	return pull(true)
+end)
+addLabel("Automatic sync pushes Studio changes and pulls Git changes. Conflicts stop it safely.", 38)
+autoSyncButton = addButton(autoSyncEnabled and "Disable automatic sync" or "Enable automatic sync", toggleAutoSync)
+updateAutoSyncButton()
+
+startChangeTracking()
+
+task.spawn(function()
+	local initialProjectText = projectBox.Text
+	local fetchedName = fetchGameName()
+	if projectName == "" and projectBox.Text == initialProjectText and (projectBox.Text == "" or projectBox.Text == game.Name) then
+		projectName = fetchedName
+		projectBox.Text = fetchedName
+		setSetting("gitrb.project", projectName)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(AUTO_SYNC_INTERVAL)
+		if autoSyncEnabled then
+			local ok, err = pcall(autoSyncCycle)
+			if not ok then
+				setStatus("auto-sync: " .. tostring(err), true)
+			end
+		end
+	end
 end)
 
 openButton.Click:Connect(function()
